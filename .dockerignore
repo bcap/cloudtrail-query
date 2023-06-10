@@ -1,0 +1,6 @@
+*.json
+*.log
+
+query.sh
+Makefile
+Dockerfile
