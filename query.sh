@@ -2,4 +2,4 @@
 
 set -e
 
-docker run -i --rm -v ~/.aws:/root/.aws cloudtrail-query:latest "$@"
+docker run -i --rm -v ~/.aws:/root/.aws bcap/cloudtrail-query:latest "$@"

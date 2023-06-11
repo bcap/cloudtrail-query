@@ -4,16 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"regexp"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
+	"github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 )
 
 type options struct {
-	normalize bool
-	expand    bool
+	normalize                  bool
+	expand                     bool
+	queryRunningFrequencyCheck time.Duration
+}
+
+var defaults = options{
+	normalize:                  true,
+	expand:                     true,
+	queryRunningFrequencyCheck: 250 * time.Millisecond,
 }
 
 type Option = func(*options)
@@ -27,6 +37,12 @@ func Normalize(normalize bool) Option {
 func Expand(expand bool) Option {
 	return func(o *options) {
 		o.expand = expand
+	}
+}
+
+func RunningFrequencyCheck(duration time.Duration) Option {
+	return func(o *options) {
+		o.queryRunningFrequencyCheck = duration
 	}
 }
 
@@ -61,10 +77,7 @@ func Query(ctx context.Context, client *cloudtrail.Client, query string, callbac
 		return errors.New("nil callback")
 	}
 
-	o := options{
-		normalize: true,
-		expand:    true,
-	}
+	o := defaults
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -87,6 +100,7 @@ func Query(ctx context.Context, client *cloudtrail.Client, query string, callbac
 	var total int32
 
 	for {
+		start := time.Now()
 		results, err := client.GetQueryResults(ctx, &cloudtrail.GetQueryResultsInput{
 			QueryId:         queryID,
 			MaxQueryResults: &maxResults,
@@ -94,6 +108,15 @@ func Query(ctx context.Context, client *cloudtrail.Client, query string, callbac
 		})
 		if err != nil {
 			return err
+		}
+
+		switch results.QueryStatus {
+		case types.QueryStatusCancelled:
+			return errors.New("query cancelled")
+		case types.QueryStatusFailed:
+			return fmt.Errorf("query failed: %w", errors.New(*results.ErrorMessage))
+		case types.QueryStatusTimedOut:
+			return errors.New("query timed out")
 		}
 
 		for _, raw := range results.QueryResultRows {
@@ -132,6 +155,16 @@ func Query(ctx context.Context, client *cloudtrail.Client, query string, callbac
 		if pageToken == nil {
 			break
 		}
+
+		// To avoid issuing too many AWS api calls to get query results while the query is being
+		// processed on AWS side
+		if len(results.QueryResultRows) == 0 {
+			select {
+			case <-time.After(o.queryRunningFrequencyCheck - time.Since(start)):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 	}
 
 	return nil
@@ -159,8 +192,7 @@ func expandRow(row map[string]any) {
 		if err := json.Unmarshal([]byte(newStr), &newValue); err != nil {
 			continue
 		}
-		set[key+"__raw"] = value
-		set[key] = newValue
+		set[key+"__parsed"] = newValue
 	}
 	for key, value := range set {
 		row[key] = value

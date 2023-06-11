@@ -1,4 +1,4 @@
-module github.com/bcap/cloudtrail-query
+module github.com/bcap/cloudtrailquery
 
 go 1.20
 

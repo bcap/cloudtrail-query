@@ -9,8 +9,24 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "main.go",
+            "program": "cmd/main.go",
             "args": ["select * from ad85f16b-ed48-4cd0-8833-e0d5e6b22725 limit 10"]
+        },
+        {
+            "name": "bad query",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "cmd/main.go",
+            "args": ["select * from ad85f16b-ed48-4cd0-8833-e0d5e6b22725 where eeeeeeeee = 1 limit 10"]
+        },
+        {
+            "name": "slow-ish query",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "cmd/main.go",
+            "args": ["select * from ad85f16b-ed48-4cd0-8833-e0d5e6b22725 where eventTime > '2023-06-10 00:00:00.000' and eventType = 'AwsApiCall' order by eventTime desc limit 5"]
         }
     ]
 }
