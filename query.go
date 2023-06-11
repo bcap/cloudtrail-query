@@ -97,7 +97,7 @@ func Query(ctx context.Context, client *cloudtrail.Client, query string, callbac
 	var maxResults int32 = 1000
 
 	var processed int32
-	var total int32
+	var total int32 = -1
 
 	for {
 		start := time.Now()
@@ -140,11 +140,20 @@ func Query(ctx context.Context, client *cloudtrail.Client, query string, callbac
 			processed++
 		}
 
-		if total == 0 && results.QueryStatistics != nil && results.QueryStatistics.TotalResultsCount != nil {
-			total = *results.QueryStatistics.TotalResultsCount
+		if results.QueryStatistics != nil && results.QueryStatistics.TotalResultsCount != nil {
+			newTotal := *results.QueryStatistics.TotalResultsCount
+			if newTotal >= processed {
+				total = newTotal
+			} else {
+				// Sometimes TotalResultsCount reports a number that is below than what we processed so far,
+				// which seems to be a bug on AWS side. In such cases we set total to -1, which in our
+				// context means "undefined"
+				total = -1
+			}
 		}
+
 		if processed > 0 {
-			if total != 0 {
+			if total >= 0 {
 				log.Printf("progress: %d/%d (%.2f%%)", processed, total, float64(processed)/float64(total)*100)
 			} else {
 				log.Printf("progress: %d/? (?%%)", processed)
